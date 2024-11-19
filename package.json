@@ -1,0 +1,12 @@
+{
+  "type": "module",
+  "name": "dock-subscan-fetch",
+  "version": "1.0.0",
+  "description": "Dumps all the data for a Dock network from Subscan",
+  "main": "fetch_data.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Dock Labs AG",
+  "license": "MIT"
+}
