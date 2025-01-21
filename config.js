@@ -17,6 +17,7 @@ export const entities = [
     name: "extrinsics",
     endpoint: "/scan/extrinsics",
     fetch: true,
-    responseList: "extrinsics"
+    responseList: "extrinsics",
+    startPage: 44509
   },
 ];

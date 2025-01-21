@@ -10,11 +10,14 @@ function getBaseUrl(network){
 }
 
 async function getDataList(network, entity, folder, outputFile=null, page=0, row=100){
-  const options= { page, row };
+  const options= { 
+    page, 
+    row 
+  };
   const url = `${getBaseUrl(network)}${entity.endpoint}`;
   const retrievedRecords = page*row + row;
 
-  console.log(`... ${entity.name} from URL ${url}`);
+  console.log(`${new Date().toISOString()}-... ${entity.name} from URL ${url} page:${page}`);
 
   try{
     if (!outputFile) {
@@ -25,36 +28,44 @@ async function getDataList(network, entity, folder, outputFile=null, page=0, row
     {
       headers: {
         "Content-Type": "application/json",
-        "X-API-Key": "820cefe1e5b4481eaac53300b298fd08"
+        "X-API-Key": process.env.SUBSCAN_API_KEY
       },
       method: "POST",
       body: JSON.stringify(options)
     });
 
-    const json = await response.json();
-    console.log(`${entity.name} parsing response ${response.status} page:${page}, count:${json.data?.count}`);
+    let retry = 0;
+    let json = '';
+    while(retry < 3){
+      try {
+        json = await response.json();
+        console.log(`${new Date().toISOString()}-${entity.name} parsing response ${response.status} page:${page}, count:${json.data?.count}`);
 
-    if (page == 0){
-      await outputFile.write(`{"${entity.name}": [`);
+        if (page == 0){
+          await outputFile.write(`{"${entity.name}": [`);
+        }
+
+        if (json.data[entity.responseList]){
+          const promises = json.data[entity.responseList].map(async act =>  {
+            await outputFile.write(`${JSON.stringify(act, null, 2)},`);
+          });
+          await Promise.all(promises);
+        }
+        retry = 3;
+      } catch(httpError){
+        console.error(httpError);
+        retry = retry+1;
+      }
     }
-
-    if (json.data[entity.responseList]){
-      const promises = json.data[entity.responseList].map(async act =>  {
-        await outputFile.write(`${JSON.stringify(act, null, 2)},`);
-      });
-      await Promise.all(promises);
-    }
-
     // subscan have a bug with the transfers route where it always reports a count of 0 even though there are transfers
     // so if the count is 0 but there are objects keep trying until the object list is null
     if (retrievedRecords < json.data.count || (json.data.count == 0 && json.data[entity.responseList]?.length == row)){
-      if (retrievedRecords % 100000 == 0){
+      if (page % 50 == 0){
         // close current file and start a new one
         await outputFile.write(']}');
         await outputFile.close();
         outputFile = null;
       }
-
       await sleep(750); // Subscan rate limits
       await getDataList(network, entity, folder, outputFile, page+1, row);
     } else {
@@ -75,7 +86,7 @@ const networkFolder = await fs.mkdir(`../${network}-${Date.now().toString()}`,{r
 const promises = entities.map(async entity => {
   if (entity.fetch){
     console.log(`Downloading ${entity.name}...`);
-    await getDataList(network, entity, networkFolder);
+    await getDataList(network, entity, networkFolder, null, entity.startPage ?? 0);
   } else {
     console.log(`Skipping ${entity.name}.`);
   }
