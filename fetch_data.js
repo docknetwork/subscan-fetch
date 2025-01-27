@@ -9,11 +9,16 @@ function getBaseUrl(network){
   return `https://${network}.api.subscan.io/api`;
 }
 
-async function getDataList(network, entity, folder, outputFile=null, page=0, row=100){
+async function getDataList(network, entity, folder, outputFile=null, page=0, row=100, after_id=[]){
   const options= { 
     page, 
-    row 
+    row,
+    after_id 
   };
+
+  if (after_id?.length > 0 && page > 99){
+    options.page = null;
+  }
   const url = `${getBaseUrl(network)}${entity.endpoint}`;
   const retrievedRecords = page*row + row;
 
@@ -24,33 +29,52 @@ async function getDataList(network, entity, folder, outputFile=null, page=0, row
       outputFile = await fs.open(`${folder}/${entity.name}-${page}.json`, 'a');
     }
   
-    const response = await fetch(url,
-    {
-      headers: {
-        "Content-Type": "application/json",
-        "X-API-Key": process.env.SUBSCAN_API_KEY
-      },
-      method: "POST",
-      body: JSON.stringify(options)
-    });
-
     let retry = 0;
     let json = '';
+    const foundIds = [];
+
     while(retry < 3){
+      const response = await fetch(url,
+      {
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-Key": process.env.SUBSCAN_API_KEY
+        },
+        method: "POST",
+        body: JSON.stringify(options)
+      });
+
+
       try {
+        if (response.status != 200){
+          console.log(response);
+          return;
+        }
+
         json = await response.json();
-        console.log(`${new Date().toISOString()}-${entity.name} parsing response ${response.status} page:${page}, count:${json.data?.count}`);
 
         if (page == 0){
           await outputFile.write(`{"${entity.name}": [`);
         }
 
-        if (json.data[entity.responseList]){
+        if (json.data instanceof Object && entity.responseList in json.data){
+          console.log(`${new Date().toISOString()}-${entity.name} parsing response ${response.status} page:${page}, count:${json.data?.count}`);
           const promises = json.data[entity.responseList].map(async act =>  {
             await outputFile.write(`${JSON.stringify(act, null, 2)},`);
+            foundIds.push(act.transfer_id);
           });
           await Promise.all(promises);
+        } else {
+          console.log(`${new Date().toISOString()}-${entity.name} no data returned ${response.status} page:${page}, afterId:${after_id}, count:${json.data?.count} retry:${retry}`);
+          retry = retry +1;
+
+          if (retry == 3){
+            console.log(response);
+            console.log(json);
+          }
+          continue;
         }
+
         retry = 3;
       } catch(httpError){
         console.error(httpError);
@@ -60,14 +84,15 @@ async function getDataList(network, entity, folder, outputFile=null, page=0, row
     // subscan have a bug with the transfers route where it always reports a count of 0 even though there are transfers
     // so if the count is 0 but there are objects keep trying until the object list is null
     if (retrievedRecords < json.data.count || (json.data.count == 0 && json.data[entity.responseList]?.length == row)){
-      if (page % 50 == 0){
+      if (entity.splitFiles && page % 50 == 0){
         // close current file and start a new one
         await outputFile.write(']}');
         await outputFile.close();
         outputFile = null;
       }
       await sleep(750); // Subscan rate limits
-      await getDataList(network, entity, folder, outputFile, page+1, row);
+      const afterId = Math.max(...foundIds);
+      await getDataList(network, entity, folder, outputFile, page+1, row,[afterId]);
     } else {
       await outputFile.write(']}');
     }
@@ -81,7 +106,7 @@ async function getDataList(network, entity, folder, outputFile=null, page=0, row
   }
 }
 
-const networkFolder = await fs.mkdir(`../${network}-${Date.now().toString()}`,{recursive: true});
+const networkFolder = await fs.mkdir(`output/${network}-${Date.now().toString()}`,{recursive: true});
 
 const promises = entities.map(async entity => {
   if (entity.fetch){

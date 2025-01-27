@@ -1,23 +1,27 @@
-export const network = 'dock-poa';
+export const network = 'dock';
 
 export const entities = [
   {
     name: "accounts",
     endpoint: "/v2/scan/accounts",
-    fetch: false,
-    responseList: "list"
-  },
+    fetch: true,
+    responseList: "list",
+    splitFiles: false
+},
   {
     name: "transfers",
-    endpoint: "/scan/transfers",
-    fetch: false,
-    responseList: "transfers"
+    endpoint: "/v2/scan/transfers",
+    fetch: true,
+    responseList: "transfers",
+    startPage: 0,
+    splitFiles: false
   },
   {
     name: "extrinsics",
     endpoint: "/scan/extrinsics",
-    fetch: true,
+    fetch: false,
     responseList: "extrinsics",
-    startPage: 44509
+    startPage: 0,
+    splitFiles: true
   },
 ];
