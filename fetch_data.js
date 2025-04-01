@@ -13,16 +13,26 @@ async function getDataList(network, entity, folder, outputFile=null, page=0, row
   const options= { 
     page, 
     row,
-    after_id 
+    after_id,
+    include_total: true,
+    order: "asc",
+    sort: "block_timestamp"
   };
 
-  if (after_id?.length > 0 && page > 99){
+  if (entity.name == "accounts"){
+    delete(options.order);
+    delete(options.sort);
+    delete(options.after_id);
+    options.min_balance = "-1"; // forces the account list to include 0 balance accounts
+  } else if (after_id?.length > 0 && page > 99){
     options.page = null;
   }
+
+
   const url = `${getBaseUrl(network)}${entity.endpoint}`;
   const retrievedRecords = page*row + row;
 
-  console.log(`${new Date().toISOString()}-... ${entity.name} from URL ${url} page:${page}`);
+  console.log(`${new Date().toISOString()}-... ${entity.name} from URL ${url} page:${page} after_id:${after_id} row:${row} retrievedRecords:${retrievedRecords}`);
 
   try{
     if (!outputFile) {
@@ -57,9 +67,15 @@ async function getDataList(network, entity, folder, outputFile=null, page=0, row
           await outputFile.write(`{"${entity.name}": [`);
         }
 
+        if (retrievedRecords > 10000){
+          console.log('hit 10k records.');
+        }
         if (json.data instanceof Object && entity.responseList in json.data){
-          console.log(`${new Date().toISOString()}-${entity.name} parsing response ${response.status} page:${page}, count:${json.data?.count}`);
+          console.log(`${new Date().toISOString()}-${entity.name} parsing response ${response.status} page:${page}, after_id=${after_id} count:${json.data?.count}`);
           const promises = json.data[entity.responseList].map(async act =>  {
+            if (act.address == '3FmwwHQxFo8715RubRR2geuSCAhCT9Wx3KhBSoJqD3HofiZm'){
+              console.log('found 3FmwwHQxFo8715RubRR2geuSCAhCT9Wx3KhBSoJqD3HofiZm');
+            }
             await outputFile.write(`${JSON.stringify(act, null, 2)},`);
             foundIds.push(act.transfer_id);
           });
